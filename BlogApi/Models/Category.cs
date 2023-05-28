@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Blog.Models
 {
@@ -21,5 +22,8 @@ namespace Blog.Models
         [MaxLength(80)]
         [Column("Slug", TypeName="VARCHAR")]
         public string Slug { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<Post> Posts { get; set; }
     }
 }
