@@ -48,7 +48,10 @@ namespace BlogApi.Controllers
         }
 
         [HttpPost("v1/accounts")]
-        public async Task<IActionResult> PostAsync([FromBody] RegisterViewModel model, [FromServices] BlogDataContext context)
+        public async Task<IActionResult> PostAsync(
+            [FromBody] RegisterViewModel model,
+            [FromServices] EmailService emailService,
+            [FromServices] BlogDataContext context)
         {
             if (!ModelState.IsValid)
             {
@@ -71,6 +74,12 @@ namespace BlogApi.Controllers
                 await context.Users.AddAsync(user);
                 await context.SaveChangesAsync();
 
+                emailService.Send(
+                    user.Name,
+                    user.Email,
+                    "Bem-vindo",
+                    $"sua senha é {passaword}");
+
                 return Ok(new ResultViewModel<dynamic>(new
                 {
                     user = user.Email, passaword
@@ -85,13 +94,58 @@ namespace BlogApi.Controllers
                 return StatusCode(500, new ResultViewModel<string>("Internal server fail"));
             }
         }
+        
+        [HttpDelete("v1/accounts/{id:int}")]
+        public async Task<IActionResult> DeleteAsync(
+            [FromRoute] int id,
+            [FromServices] BlogDataContext context)
+        {
+            var user = await context.Users.FirstOrDefaultAsync(c => c.Id == id);
+
+            if (user == null)
+            {
+                return NotFound(new ResultViewModel<User>("User is not found"));
+            }
+
+            context.Users.Remove(user);
+            await context.SaveChangesAsync();
+
+            return Ok(new ResultViewModel<User>(user));
+        }
 
         [HttpPost("v1/login")]
-        public IActionResult Login()
+        public async Task<IActionResult> Login([FromBody] LoginViewModel model, [FromServices] BlogDataContext context, [FromServices] TokenService tokenService)
         {
-            var token = _tokenService.GenerateToken(null);
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new ResultViewModel<string>(ModelState.GetErrors()));
+            }
 
-            return Ok(token);
+            var user = await context
+                .Users
+                .AsNoTracking()
+                .Include(x => x.Roles)
+                .FirstOrDefaultAsync(x => x.Email == model.Email);
+
+            if (user == null)
+            {
+                return StatusCode(401, new ResultViewModel<string>("User or password is invalid"));
+            }
+
+            if (!PasswordHasher.Verify(user.PasswordHash, model.Password))
+            {
+                return StatusCode(401, new ResultViewModel<string>("User or password is invalid"));
+            }
+
+            try
+            {
+                var token = tokenService.GenerateToken(user);
+                return Ok(new ResultViewModel<string>(token, null));
+            }
+            catch
+            {
+                return StatusCode(500, new ResultViewModel<string>("internal fail on server"));
+            }
         }
     }
 }
